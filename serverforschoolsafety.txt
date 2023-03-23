@@ -1,0 +1,149 @@
+//import libraries
+const express = require('express'); 
+const HashMap = require('hashmap');
+const formData = require('form-data');
+const path = require('path');
+const bodyParser = require("body-parser");
+const fetch = require('fetch');
+var mqtt = require('mqtt');
+
+//express config
+const port = 8080;
+const app = express();
+
+//mqtt connect options
+var options = {
+    host: 'bc67551f214d4cc18b6b32fa44cc8fc5.s2.eu.hivemq.cloud',
+    port: 8883,
+    protocol: 'mqtts',
+    username: 'ae_user',
+    password: 'Chamberlain1'
+}
+
+//---------------
+//MQTT
+//---------------
+
+
+// initialize the MQTT client
+var client = mqtt.connect(options);
+
+// setup the callbacks
+client.on('connect', function () {
+    console.log('Connected');
+});
+
+client.on('error', function (error) {
+    console.log(error);
+});
+
+// subscribe to topic 'my/test/topic'
+client.subscribe('spring2023/rfid/#');
+
+client.on('message', function (topic, message) {
+    if(message.toString() == "bad" || message.toString() == "good" ){
+      return;
+    }
+    
+    //Fetching first bit of data from RFID scan, LengthOfMessage variable 
+    //is a number that signifies the number of following elements to be collected, it is sent before the unique RFID Number
+
+    //This for loop collects each portion of the unique RFID number and puts it into StudentIDArr
+    StudentIDArr = [];
+    LengthOfMessage = message[0]
+    for (let i = 0; i < LengthOfMessage; i++){
+      //StudentIDArr[i] = message[i+1]
+      StudentIDArr.push(message[i+1])
+      console.log(StudentIDArr)
+      console.log(LengthOfMessage)
+      console.log(i)
+    }
+    //This array checks to see if the VerifiedStudentArr contains StudentIDArr, 
+    //which is acting as a DB for students that are permitted to enter.
+    //if a match is found it returns a client.publish command to let the card reader know that the ID was found or not found
+    //if found it also adds that ID array to an InClassStudents array or hashmap?? TBD
+    StudentFound = false;
+    
+    VerifiedStudentsArr = [[133, 100, 243, 58, 40, 24, 4], [/*example #*/], [/*example #*/], [/*example #*/], [/*example #*/], [8239203]];
+    for (let i = 0; i < VerifiedStudentsArr.length; i++){
+      if(StudentIDArr.toString() == VerifiedStudentsArr[i].toString()){
+        StudentFound = true;
+        client.publish('spring2023/rfid/5', "good"); // these publish and RFID scanner knows whether RFID chip is accepted or not
+        break; 
+      }
+    }
+    if(StudentFound == false){
+      client.publish('spring2023/rfid/5', "bad"); 
+      console.log("bad")
+    }
+});
+
+// class studentinfo{
+//   constructor(VerifiedStudentArr, studentname, studentdatetime){
+//     this.studentid = studentid; 
+//     this.studentname = studentname;
+//     this.studentdatetime = studentdatetime;
+//   }
+  
+// }
+
+
+
+// -------------------------------
+// HTTP Portion of server is below
+// -------------------------------
+
+const occupancyjson = [
+  {
+    "curroccupancy": 0
+  }
+]
+
+//enable static resources         
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.json());
+
+//add bodyparser
+app.use(bodyParser.urlencoded({ extended: false }));   
+
+//use pug as view engine
+app.set('view engine', 'pug');
+
+
+//root route
+app.get('/', (req, res) => {
+  // res.render('home', {
+  //   title: 'CGI AE Projects',
+  // });
+  console.log('homepage req')
+});
+
+//root route
+app.get('/send', (req, res) => {
+  // client.publish('my/test/topic', 'new message');
+  // res.render('home', {
+  //   title: 'CGI AE Projects - Send',
+  // });
+  console.log('homepage req or something')
+});
+
+//start the server
+app.listen(port, () => { 
+  console.log(`Now listening on port ${port}`); 
+});
+
+//chris route
+
+app.post('/occupancypost', (req, res) => {
+  const occupancyNUM = req.body.CurrOccupancy;
+  console.log("Current Occupancy: ", + occupancyNUM) 
+
+  occupancyjson.push(occupancyNUM);
+  res.send(201)
+  return occupancyNUM;
+});
+
+
+app.get('/occupancypost', (req, res) => {
+  res.send(occupancyjson);
+});
